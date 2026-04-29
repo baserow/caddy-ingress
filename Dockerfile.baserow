@@ -1,0 +1,24 @@
+# syntax=docker/dockerfile:1.7
+#
+# Multi-stage build for the Baserow fork's image pipeline. Upstream's
+# Dockerfile assumes a pre-built binary copied in by goreleaser; this
+# one builds inline so a single `docker build` produces the image.
+# Used by .github/workflows/baserow-image.yml.
+
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS build
+ARG TARGETOS
+ARG TARGETARCH
+WORKDIR /src
+RUN apk add --no-cache git ca-certificates
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags='-s -w' \
+    -o /out/ingress-controller ./cmd/caddy
+
+FROM alpine:3.20
+RUN apk add --no-cache ca-certificates
+COPY --from=build /out/ingress-controller /ingress-controller
+EXPOSE 80 443
+ENTRYPOINT ["/ingress-controller"]

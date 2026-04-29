@@ -13,6 +13,8 @@ const (
 	permanentRedirectCodeAnnotation = "permanent-redirect-code"
 	temporaryRedirectAnnotation     = "temporal-redirect"
 	trustedProxies                  = "trusted-proxies"
+	corazaDisabledAnnotation        = "coraza-disabled"
+	corazaDirectivesAnnotation      = "coraza-directives"
 )
 
 func getAnnotation(ing *v1.Ingress, rule string) string {

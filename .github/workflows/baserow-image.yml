@@ -1,0 +1,74 @@
+name: Baserow image
+
+# Builds the custom Caddy ingress image (with Coraza WAF compiled in)
+# and pushes to the Baserow ECR repository. Tracks BC-451.
+#
+# Required GitHub Actions repository variables (configured by BC-450):
+#   vars.AWS_ECR_ACCOUNT_ID       — 12-digit AWS account ID owning the repo
+#   vars.AWS_ECR_REGION           — region the repo lives in (e.g. eu-central-1)
+#   vars.AWS_ECR_PUSH_ROLE_ARN    — IAM role ARN assumable via GitHub OIDC
+#
+# Tags published:
+#   push to baserow            -> :sha-<short7>, :edge
+#   push of tag baserow-v*     -> :vX.Y.Z, :latest
+#   workflow_dispatch          -> :sha-<short7>
+
+on:
+  push:
+    branches: [baserow]
+    tags: ['baserow-v*']
+  workflow_dispatch:
+
+permissions:
+  id-token: write   # OIDC for AWS
+  contents: read
+
+env:
+  ECR_REPOSITORY: baserow-caddy-ingress
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ECR_PUSH_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_ECR_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Generate image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=edge,branch=baserow
+            type=match,pattern=baserow-v(\d+\.\d+\.\d+),group=1,prefix=v
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/baserow-v') }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.baserow
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
