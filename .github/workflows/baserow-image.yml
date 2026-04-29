@@ -24,7 +24,7 @@ permissions:
   contents: read
 
 env:
-  ECR_REPOSITORY: baserow-caddy-ingress
+  ECR_REPOSITORY: caddy-ingress
 
 jobs:
   build:
