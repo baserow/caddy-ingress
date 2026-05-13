@@ -2,6 +2,7 @@ package global
 
 import (
 	"encoding/json"
+	"fmt"
 
 	caddy2 "github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig"
@@ -54,8 +55,14 @@ func (p ConfigMapPlugin) GlobalHandler(config *converter.Config, store *store.St
 
 		var onDemandConfig *caddytls.OnDemandConfig
 		if cfgMap.OnDemandTLS {
+			if cfgMap.OnDemandAsk == "" {
+				return fmt.Errorf("onDemandTLS requires onDemandAsk to be set: Caddy v2.7+ requires a permission endpoint to enable on-demand TLS for public ACME issuers")
+			}
 			onDemandConfig = &caddytls.OnDemandConfig{
-				Ask: cfgMap.OnDemandAsk,
+				PermissionRaw: caddyconfig.JSONModuleObject(
+					caddytls.PermissionByHTTP{Endpoint: cfgMap.OnDemandAsk},
+					"module", "http", nil,
+				),
 			}
 		}
 
