@@ -33,6 +33,10 @@ ingressController:
     email: ""
     metrics: true
     proxyProtocol: false
+    # -- Comma-separated CIDRs trusted to send PROXY protocol headers
+    # (e.g. the load balancer's subnet). Without it, headers are stripped
+    # but their client IP is discarded.
+    proxyProtocolAllow: ""
     experimentalSmartSort: false
     onDemandTLS: false
     # onDemandAsk:

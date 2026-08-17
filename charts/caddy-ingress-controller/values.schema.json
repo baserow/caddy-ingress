@@ -173,6 +173,10 @@
               "$id": "#/properties/ingressController/properties/config/properties/proxyProtocol",
               "type": "boolean"
             },
+            "proxyProtocolAllow": {
+              "$id": "#/properties/ingressController/properties/config/properties/proxyProtocolAllow",
+              "type": "string"
+            },
             "onDemandTLS": {
               "$id": "#/properties/ingressController/properties/config/properties/onDemandTLS",
               "type": "boolean"

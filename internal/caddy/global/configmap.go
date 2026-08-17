@@ -81,8 +81,20 @@ func (p ConfigMapPlugin) GlobalHandler(config *converter.Config, store *store.St
 	}
 
 	if cfgMap.ProxyProtocol {
+		// Without an allow list Caddy strips the PROXY header but discards
+		// its contents (fallback policy "ignore"), so the logged client IP
+		// stays the load balancer's. Only sources in proxyProtocolAllow are
+		// trusted to assert a client IP — scope it to the LB's subnet.
+		ppWrapper := map[string]any{"wrapper": "proxy_protocol"}
+		if len(cfgMap.ProxyProtocolAllow) > 0 {
+			ppWrapper["allow"] = cfgMap.ProxyProtocolAllow
+		}
+		ppRaw, err := json.Marshal(ppWrapper)
+		if err != nil {
+			return fmt.Errorf("marshaling proxy_protocol listener wrapper: %w", err)
+		}
 		httpServer.ListenerWrappersRaw = []json.RawMessage{
-			json.RawMessage(`{"wrapper":"proxy_protocol"}`),
+			ppRaw,
 			json.RawMessage(`{"wrapper":"tls"}`),
 		}
 	}
