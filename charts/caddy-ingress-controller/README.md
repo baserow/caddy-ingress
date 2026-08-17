@@ -60,6 +60,7 @@ The command removes all the Kubernetes components associated with the chart and 
 | ingressController.config.metrics | bool | `true` |  |
 | ingressController.config.onDemandTLS | bool | `false` |  |
 | ingressController.config.proxyProtocol | bool | `false` |  |
+| ingressController.config.proxyProtocolAllow | string | `""` | Comma-separated CIDRs trusted to send PROXY protocol headers |
 | ingressController.rbac.create | bool | `true` |  |
 | ingressController.verbose | bool | `false` |  |
 | ingressController.leaseId | string | `""` |  |

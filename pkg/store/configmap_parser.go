@@ -19,6 +19,7 @@ type ConfigMapOptions struct {
 	Email                 string         `json:"email,omitempty"`
 	ExperimentalSmartSort bool           `json:"experimentalSmartSort,omitempty"`
 	ProxyProtocol         bool           `json:"proxyProtocol,omitempty"`
+	ProxyProtocolAllow    []string       `json:"proxyProtocolAllow,omitempty"`
 	Metrics               bool           `json:"metrics,omitempty"`
 	OnDemandTLS           bool           `json:"onDemandTLS,omitempty"`
 	OnDemandAsk           string         `json:"onDemandAsk,omitempty"`
@@ -47,6 +48,7 @@ func ParseConfigMap(cm *apiv1.ConfigMap) (*ConfigMapOptions, error) {
 		TagName:          "json",
 		DecodeHook: mapstructure.ComposeDecodeHookFunc(
 			stringToCaddyDurationHookFunc(),
+			mapstructure.StringToSliceHookFunc(","),
 		),
 	}
 
