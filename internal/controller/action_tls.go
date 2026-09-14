@@ -82,19 +82,44 @@ func writeFile(s *apiv1.Secret) error {
 	return nil
 }
 
+// forceNextReload clears the last-applied-config cache so the reload that
+// follows this action is never skipped by the bytes.Equal short-circuit in
+// reloadCaddy. Caddy only reads the cert folder (`load_folders`) at
+// caddy.Load time, and a pem appearing on (or vanishing from) disk does not
+// change the generated config JSON — without this, a Secret that lands
+// after the Ingress-driven reload is silently never served. The ordering is
+// deterministic on pod start: the TLS-secret informer only starts once an
+// ingress with spec.tls is synced, so the pem is always written after the
+// first config load.
+func forceNextReload(c *CaddyController) {
+	c.lastAppliedConfig = nil
+}
+
 func (r SecretAddedAction) handle(c *CaddyController) error {
 	c.logger.Infof("TLS secret created (%s/%s)", r.resource.Namespace, r.resource.Name)
-	return writeFile(r.resource)
+	if err := writeFile(r.resource); err != nil {
+		return err
+	}
+	forceNextReload(c)
+	return nil
 }
 
 func (r SecretUpdatedAction) handle(c *CaddyController) error {
 	c.logger.Infof("TLS secret updated (%s/%s)", r.resource.Namespace, r.resource.Name)
-	return writeFile(r.resource)
+	if err := writeFile(r.resource); err != nil {
+		return err
+	}
+	forceNextReload(c)
+	return nil
 }
 
 func (r SecretDeletedAction) handle(c *CaddyController) error {
 	c.logger.Infof("TLS secret deleted (%s/%s)", r.resource.Namespace, r.resource.Name)
-	return os.Remove(filepath.Join(GetCertFolder(), r.resource.Name+".pem"))
+	if err := os.Remove(filepath.Join(GetCertFolder(), r.resource.Name+".pem")); err != nil {
+		return err
+	}
+	forceNextReload(c)
+	return nil
 }
 
 // watchTLSSecrets Start listening to TLS secrets if at least one ingress needs it.
