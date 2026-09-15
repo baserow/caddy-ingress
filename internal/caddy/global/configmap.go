@@ -6,6 +6,7 @@ import (
 
 	caddy2 "github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig"
+	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 	"github.com/caddyserver/caddy/v2/modules/caddytls"
 	"github.com/caddyserver/ingress/pkg/converter"
 	"github.com/caddyserver/ingress/pkg/store"
@@ -97,6 +98,22 @@ func (p ConfigMapPlugin) GlobalHandler(config *converter.Config, store *store.St
 			ppRaw,
 			json.RawMessage(`{"wrapper":"tls"}`),
 		}
+	}
+
+	// Trust an upstream proxy layer (e.g. Cloudflare in front of the LB) to
+	// assert the real client IP via a request header. Only connections whose
+	// source address — after the proxy_protocol listener wrapper has applied
+	// the LB's PROXY header — falls inside trustedProxies get their client IP
+	// taken from clientIPHeaders (in order); anyone else sending the header
+	// is ignored, so direct clients can't spoof it. This populates Caddy's
+	// client_ip var, which coraza-caddy prefers over RemoteAddr — WAF rules
+	// on REMOTE_ADDR, the IP blocklists, and logs all see the real client.
+	if len(cfgMap.TrustedProxies) > 0 {
+		httpServer.TrustedProxiesRaw = caddyconfig.JSONModuleObject(
+			caddyhttp.StaticIPRange{Ranges: cfgMap.TrustedProxies},
+			"source", "static", nil,
+		)
+		httpServer.ClientIPHeaders = cfgMap.ClientIPHeaders
 	}
 	return nil
 }
