@@ -20,6 +20,8 @@ type ConfigMapOptions struct {
 	ExperimentalSmartSort bool           `json:"experimentalSmartSort,omitempty"`
 	ProxyProtocol         bool           `json:"proxyProtocol,omitempty"`
 	ProxyProtocolAllow    []string       `json:"proxyProtocolAllow,omitempty"`
+	TrustedProxies        []string       `json:"trustedProxies,omitempty"`
+	ClientIPHeaders       []string       `json:"clientIPHeaders,omitempty"`
 	Metrics               bool           `json:"metrics,omitempty"`
 	OnDemandTLS           bool           `json:"onDemandTLS,omitempty"`
 	OnDemandAsk           string         `json:"onDemandAsk,omitempty"`
