@@ -273,7 +273,13 @@ func (c *CaddyController) reloadCaddy() error {
 	}
 
 	c.logger.Debug("reloading caddy with config", string(j))
-	err = caddy.Load(j, false)
+	// forceReload=true: caddy.Load has its own equal-config short-circuit
+	// ("config is unchanged"), which defeats forceNextReload — after a TLS
+	// secret write the generated JSON is identical to the running config,
+	// but load_folders must be re-read from disk. Reaching this point
+	// already means the controller decided a reload is needed (the
+	// bytes.Equal dedup above), so forcing is always correct here.
+	err = caddy.Load(j, true)
 	if err != nil {
 		return fmt.Errorf("could not reload caddy config %v", err.Error())
 	}
