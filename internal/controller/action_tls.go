@@ -1,8 +1,10 @@
 package controller
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/caddyserver/ingress/internal/k8s"
 	apiv1 "k8s.io/api/core/v1"
@@ -51,6 +53,17 @@ func (c *CaddyController) onSecretAdded(obj *apiv1.Secret) {
 
 // onSecretUpdated is run when a TLS secret resource is updated in the cluster.
 func (c *CaddyController) onSecretUpdated(old *apiv1.Secret, new *apiv1.Secret) {
+	// Periodic informer resyncs fire UpdateFunc with the SAME object.
+	// Those must not reach the queue: each queued update forces a full
+	// Caddy reload (see forceNextReload), and every forced reload pins the
+	// old server graph — Coraza/CRS included — for as long as any
+	// long-lived connection survives the default eternal grace period.
+	// On production this OOM-looped the whole fleet within hours
+	// (2026-09-16): resync tick → forced reload → +~150MB pinned → 1Gi
+	// OOMKill. A real change always carries a new resourceVersion.
+	if old.ResourceVersion == new.ResourceVersion {
+		return
+	}
 	if k8s.IsManagedTLSSecret(new, c.resourceStore.Ingresses) {
 		c.syncQueue.Add(SecretUpdatedAction{
 			resource:    new,
@@ -66,20 +79,40 @@ func (c *CaddyController) onSecretDeleted(obj *apiv1.Secret) {
 	})
 }
 
-// writeFile writes a secret to a .pem file on disk.
-func writeFile(s *apiv1.Secret) error {
+// pemContent renders a secret's data as one deterministic PEM bundle.
+// Keys are sorted so repeated renders of the same secret are
+// byte-identical — Go map iteration order is random, and a
+// content-changed check against random-order output would flap.
+func pemContent(s *apiv1.Secret) []byte {
+	keys := make([]string, 0, len(s.Data))
+	for k := range s.Data {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
 	content := make([]byte, 0)
+	for _, k := range keys {
+		content = append(content, s.Data[k]...)
+	}
+	return content
+}
 
-	for _, cert := range s.Data {
-		content = append(content, cert...)
+// writeFile writes a secret to a .pem file on disk. It returns whether the
+// file content actually changed, so callers only force a Caddy reload — an
+// expensive operation that pins the outgoing server graph until its
+// connections drain — when there is a new certificate to pick up.
+func writeFile(s *apiv1.Secret) (bool, error) {
+	path := filepath.Join(GetCertFolder(), s.Name+".pem")
+	content := pemContent(s)
+
+	if existing, err := os.ReadFile(path); err == nil && bytes.Equal(existing, content) {
+		return false, nil
 	}
 
-	err := os.WriteFile(filepath.Join(GetCertFolder(), s.Name+".pem"), content, 0644)
-	if err != nil {
-		return err
+	if err := os.WriteFile(path, content, 0644); err != nil {
+		return false, err
 	}
-
-	return nil
+	return true, nil
 }
 
 // forceNextReload clears the last-applied-config cache so the reload that
@@ -97,19 +130,25 @@ func forceNextReload(c *CaddyController) {
 
 func (r SecretAddedAction) handle(c *CaddyController) error {
 	c.logger.Infof("TLS secret created (%s/%s)", r.resource.Namespace, r.resource.Name)
-	if err := writeFile(r.resource); err != nil {
+	changed, err := writeFile(r.resource)
+	if err != nil {
 		return err
 	}
-	forceNextReload(c)
+	if changed {
+		forceNextReload(c)
+	}
 	return nil
 }
 
 func (r SecretUpdatedAction) handle(c *CaddyController) error {
 	c.logger.Infof("TLS secret updated (%s/%s)", r.resource.Namespace, r.resource.Name)
-	if err := writeFile(r.resource); err != nil {
+	changed, err := writeFile(r.resource)
+	if err != nil {
 		return err
 	}
-	forceNextReload(c)
+	if changed {
+		forceNextReload(c)
+	}
 	return nil
 }
 
@@ -150,7 +189,7 @@ func (c *CaddyController) watchTLSSecrets() error {
 		}
 
 		for _, secret := range secrets {
-			if err := writeFile(secret); err != nil {
+			if _, err := writeFile(secret); err != nil {
 				return err
 			}
 		}
